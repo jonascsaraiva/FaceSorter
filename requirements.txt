@@ -1,2 +1,2 @@
-opencv-contrib-python
 PyQt5
+opencv-contrib-python
