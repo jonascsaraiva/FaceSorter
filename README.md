@@ -11,6 +11,8 @@ Aplicativo em Python com interface gráfica para separar imagens por reconhecime
 
 ## Como usar
 1. Instale as dependências:
+   pip install -r requirements.txt
+
    python -m venv .venv
    .venv\Scripts\Activate.ps1
    pip install opencv-contrib-python
