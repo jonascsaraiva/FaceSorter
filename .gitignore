@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+logs/
+saida/
+Entrada/
+treinamento/
+*.log
+*.pyc
+*.pyo
+*.swp
+.DS_Store
+Thumbs.db
