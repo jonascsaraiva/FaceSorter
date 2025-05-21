@@ -1,51 +1,82 @@
-# processador/reconhecimento.py
 import os
+import cv2
 import numpy as np
 from PIL import Image
 from processador.utils import registrar_log
-import cv2
+
+parar_processamento = False
+
+
+def definir_parar_processamento(valor):
+    global parar_processamento
+    parar_processamento = valor
+    if valor:
+        registrar_log("⏸️ Pausando processamento...")
+    else:
+        registrar_log("▶️ Retomando processamento...")
+
 
 def treinar_reconhecedor(pasta_treinamento):
-    """
-    Treina um reconhecedor LBPH a partir de subpastas em `pasta_treinamento`.
-    Retorna o objeto recognizer e o mapeamento de labels para nomes.
-    """
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    faces, labels = [], []
-    mapeamento = {}
+    if not os.path.exists(pasta_treinamento):
+        raise Exception(f"Pasta de treinamento não encontrada: {pasta_treinamento}")
+
+    faces = []
+    labels = []
+    nomes = {}
+    id_atual = 0
 
     registrar_log(f"🧠 Iniciando treinamento com LBPH em: {pasta_treinamento}")
 
-    valid_ext = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
-
-    for idx, nome in enumerate(sorted(os.listdir(pasta_treinamento))):
-        pasta_pessoa = os.path.join(pasta_treinamento, nome)
-        if not os.path.isdir(pasta_pessoa):
-            registrar_log(f"⏭️ Ignorando não-pasta de pessoa: {nome}")
+    for pessoa in os.listdir(pasta_treinamento):
+        caminho_pessoa = os.path.join(pasta_treinamento, pessoa)
+        if not os.path.isdir(caminho_pessoa):
             continue
-        # Verifica existência de ao menos uma imagem válida na subpasta
-        arquivos_sub = [f for f in os.listdir(pasta_pessoa)
-                         if os.path.splitext(f)[1].lower() in valid_ext]
-        if not arquivos_sub:
-            registrar_log(f"⏭️ Ignorando pasta sem imagens: {nome}")
-            continue
-        mapeamento[idx] = nome
 
-        for arquivo in sorted(arquivos_sub):
-            caminho_img = os.path.join(pasta_pessoa, arquivo)
-            try:
-                pil_img = Image.open(caminho_img).convert('L')
-                gray = np.array(pil_img)
-            except Exception as e:
-                registrar_log(f"⚠️ Falha ao abrir imagem: {caminho_img} ({e})")
+        for arquivo in os.listdir(caminho_pessoa):
+            if parar_processamento:
+                registrar_log("⏹️ Treinamento interrompido")
+                return None, {}
+
+            caminho_arquivo = os.path.join(caminho_pessoa, arquivo)
+            if not arquivo.lower().endswith((".jpg", ".jpeg", ".png", ".bmp")):
+                registrar_log(f"⏭️ Ignorando não-imagem: {arquivo}")
                 continue
-            faces.append(gray)
-            labels.append(idx)
+
+            try:
+                imagem = Image.open(caminho_arquivo).convert("L")
+                imagem_np = np.array(imagem, "uint8")
+                faces_detectadas = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+                rostos = faces_detectadas.detectMultiScale(imagem_np)
+
+                for (x, y, w, h) in rostos:
+                    faces.append(imagem_np[y:y + h, x:x + w])
+                    labels.append(id_atual)
+
+                nomes[id_atual] = pessoa
+            except Exception as e:
+                registrar_log(f"⚠️ Imagem inválida ignorada: {caminho_arquivo} ({e})")
+
+        id_atual += 1
 
     if not faces:
-        registrar_log(f"❌ Nenhuma imagem válida para treinamento em: {pasta_treinamento}")
-        raise RuntimeError(f"Nenhuma imagem para treinamento em {pasta_treinamento}")
+        raise Exception(f"Nenhuma imagem para treinamento em {pasta_treinamento}")
 
-    recognizer.train(faces, np.array(labels))
-    registrar_log("✅ Treinamento concluído com sucesso")
-    return recognizer, mapeamento
+    reconhecedor = cv2.face.LBPHFaceRecognizer_create()
+    reconhecedor.train(faces, np.array(labels))
+
+    registrar_log("✅ Treinamento finalizado")
+    return reconhecedor, nomes
+
+
+# Interface binding
+if __name__ == "__main__":
+    from PyQt5.QtWidgets import QApplication
+    from interface.interface import InterfaceOrganizador
+    import sys
+
+    app = QApplication(sys.argv)
+    janela = InterfaceOrganizador()
+    janela.btn_pausar.clicked.connect(lambda: definir_parar_processamento(True))
+    janela.btn_reiniciar.clicked.connect(lambda: definir_parar_processamento(False))
+    janela.show()
+    sys.exit(app.exec_())
