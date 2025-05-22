@@ -1,31 +1,51 @@
+"""
+Módulo responsável por detectar rostos nas imagens da pasta de entrada
+usando o reconhecedor facial previamente treinado. Ele move ou copia as imagens
+com base nos rostos reconhecidos para pastas organizadas na pasta de saída.
+Inclui suporte a pausa e retomada do processo.
+"""
+
 import os
 import shutil
 import cv2
 import numpy as np
-from PIL import Image
 from processador.utils import registrar_log
-from PyQt5.QtWidgets import QProgressBar
 
-def reconhecer_e_organizar(pasta_entrada, pasta_saida, reconhecedor, mapeamento, recortar, atualizar_progresso=None, barra_progresso: QProgressBar = None):
-    cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+class EstadoProcessamento:
+    """
+    Classe para encapsular o estado de pausa/retomada do processamento,
+    evitando o uso de variáveis globais soltas.
+    """
+    parar = False
+
+def definir_parar_processamento(valor):
+    EstadoProcessamento.parar = valor
+    if valor:
+        registrar_log("⏸️ Pausando processamento...")
+    else:
+        registrar_log("▶️ Retomando processamento...")
+
+def carregar_classificador():
+    return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+def reconhecer_e_organizar(pasta_entrada, pasta_saida, reconhecedor, mapeamento, recortar, atualizar_progresso=None):
+    cascade = carregar_classificador()
     arquivos = [f for f in os.listdir(pasta_entrada) if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp"))]
     total = len(arquivos)
 
-    registrar_log(f"\U0001f4e5 Iniciando processamento de {total} imagens da pasta: {pasta_entrada}")
-
-    if barra_progresso:
-        barra_progresso.setFormat("%p%")
-        barra_progresso.setTextVisible(True)
+    registrar_log(f"📥 Iniciando processamento de {total} imagens da pasta: {pasta_entrada}")
 
     for i, nome_arquivo in enumerate(arquivos):
+        if EstadoProcessamento.parar:
+            registrar_log("⏹️ Processamento interrompido")
+            break
+
         caminho = os.path.join(pasta_entrada, nome_arquivo)
         try:
-            # Primeira tentativa com OpenCV
-            imagem = cv2.imdecode(np.fromfile(caminho, dtype=np.uint8), cv2.IMREAD_COLOR)
+            imagem = cv2.imread(caminho)
             if imagem is None:
-                # Fallback com PIL
-                imagem_pil = Image.open(caminho).convert("RGB")
-                imagem = cv2.cvtColor(np.array(imagem_pil), cv2.COLOR_RGB2BGR)
+                registrar_log(f"⚠️ Imagem inválida ignorada: {caminho}")
+                continue
 
             cinza = cv2.cvtColor(imagem, cv2.COLOR_BGR2GRAY)
             rostos = cascade.detectMultiScale(cinza, scaleFactor=1.1, minNeighbors=5)
@@ -36,7 +56,7 @@ def reconhecer_e_organizar(pasta_entrada, pasta_saida, reconhecedor, mapeamento,
                 try:
                     label, confianca = reconhecedor.predict(face)
                     if confianca < 100:
-                        nomes_detectados.append(mapeamento.get(label, "desconhecido"))
+                        nomes_detectados.append(mapeamento.get(label, "nao_identificado"))
                 except Exception as e:
                     registrar_log(f"⚠️ Erro ao reconhecer rosto em {nome_arquivo}: {e}")
 
@@ -57,13 +77,13 @@ def reconhecer_e_organizar(pasta_entrada, pasta_saida, reconhecedor, mapeamento,
             else:
                 shutil.copy2(caminho, os.path.join(destino, nome_arquivo))
 
-            registrar_log(f"\U0001f4e6 '{nome_arquivo}' salvo em: {pasta_final}")
+            registrar_log(f"📦 '{nome_arquivo}' salvo em: {pasta_final}")
 
-            progresso = int((i + 1) / total * 100)
             if atualizar_progresso:
-                atualizar_progresso(progresso)
-            if barra_progresso:
-                barra_progresso.setValue(progresso)
+                try:
+                    atualizar_progresso(int((i + 1) / total * 100))
+                except Exception as e:
+                    registrar_log(f"⚠️ Erro ao atualizar progresso: {e}")
 
         except Exception as e:
             registrar_log(f"❌ Erro ao processar '{nome_arquivo}': {e}")

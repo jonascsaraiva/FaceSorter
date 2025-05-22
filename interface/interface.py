@@ -7,11 +7,10 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from processador.reconhecimento import treinar_reconhecedor
-from processador.detector import reconhecer_e_organizar
+from processador.detector import reconhecer_e_organizar, definir_parar_processamento
 from processador.utils import registrar_log
 
 class WorkerTreinamento(QThread):
-    progresso = pyqtSignal(int)
     concluido = pyqtSignal(tuple)
 
     def __init__(self, pasta):
@@ -68,6 +67,8 @@ class InterfaceOrganizador(QWidget):
         self.btn_treinamento.clicked.connect(self.selecionar_treinamento)
         self.btn_treinar.clicked.connect(self.acao_treinar)
         self.btn_iniciar.clicked.connect(self.acao_iniciar)
+        self.btn_pausar.clicked.connect(lambda: definir_parar_processamento(True))
+        self.btn_reiniciar.clicked.connect(lambda: definir_parar_processamento(False))
 
     def estilo_botao(self):
         return (
@@ -162,7 +163,7 @@ class InterfaceOrganizador(QWidget):
         hbox_processamento = QHBoxLayout()
         self.btn_iniciar = QPushButton("Iniciar")
         self.btn_pausar = QPushButton("Pausar")
-        self.btn_reiniciar = QPushButton("Reiniciar")
+        self.btn_reiniciar = QPushButton("Retomar")
 
         for btn in [self.btn_iniciar, self.btn_pausar, self.btn_reiniciar]:
             btn.setStyleSheet(self.estilo_botao())
@@ -211,7 +212,6 @@ class InterfaceOrganizador(QWidget):
         self.progress_bar.setValue(0)
         self.status_text.append("🧠 Thread de treinamento iniciada...")
         self.thread_treino = WorkerTreinamento(self.pasta_treinamento)
-        self.thread_treino.progresso.connect(self.progress_bar.setValue)
         self.thread_treino.concluido.connect(self.finalizar_treinamento)
         self.thread_treino.start()
 
